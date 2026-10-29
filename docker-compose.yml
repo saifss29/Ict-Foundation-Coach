@@ -1,0 +1,104 @@
+name: ict-foundation-coach
+
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.docker}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.docker}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.docker}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command:
+      [
+        "redis-server",
+        "--maxmemory",
+        "128mb",
+        "--maxmemory-policy",
+        "allkeys-lru",
+      ]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    image: ict-coach-backend:local
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
+      TOPIC_CACHE_ENABLED: "true"
+      TOPIC_CACHE_REDIS_URL: "redis://redis:6379/1"
+      RATELIMIT_STORAGE_URI: "redis://redis:6379/0"
+      FRONTEND_URL: "http://localhost:5173"
+    ports:
+      - "127.0.0.1:5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/health', timeout=5)"
+      interval: 15s
+      timeout: 6s
+      retries: 5
+      start_period: 20s
+
+  weekly-reports:
+    build:
+      context: ./backend
+    image: ict-coach-backend:local
+    restart: unless-stopped
+    command: ["python", "weekly_report_worker.py"]
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
+      FRONTEND_URL: "http://localhost:5173"
+      RATELIMIT_STORAGE_URI: "redis://redis:6379/0"
+      TOPIC_CACHE_REDIS_URL: "redis://redis:6379/1"
+      WEEKLY_REPORT_ENABLED: "true"
+      WEEKLY_REPORT_MODE: "${WEEKLY_REPORT_MODE:-weekly}"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    stop_grace_period: 90s
+
+  frontend:
+    build:
+      context: ./frontend
+    image: ict-coach-frontend:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
