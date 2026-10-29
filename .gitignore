@@ -1,0 +1,37 @@
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Frontend
+node_modules/
+dist/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Private keys
+*.pem
+*.key
+
+# Logs
+*.log
+
+# Local test outputs
+backend/full-test-output.txt
+backend/progress-test-output.txt
+backend/quiz-test-results.txt
+
+# Temporary code backups
+*.working-backup
+*.common-prompt-attempt
